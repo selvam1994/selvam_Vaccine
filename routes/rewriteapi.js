@@ -20,6 +20,16 @@ router.post('/bookAppoinment',function(req,res,next){
     // res.send("need to focus")
 })
 
+router.post('/rescheduleAppoinment',function(req,res,next){
+    BeneficiaryModel.findById({_id:req.body.id}).then(function(beneficiary){
+        apphelper.resheduleAppoinments(beneficiary,req.body).then((appoinmentResp)=>{
+            res.send(appoinmentResp)
+        })
+        // res.send(beneficiary)
+    }).catch(next)
+    // res.send("need to focus")
+})
+
 router.post('/')
 
 module.exports = router;    

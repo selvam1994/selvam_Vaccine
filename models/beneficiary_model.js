@@ -73,6 +73,9 @@ const BeneficiarySchema = new Schema ({
     },appoinmentCentre:{
         type:String,
         default: ''
+    },appoinmentId:{
+        type:String,
+        default: ''
     }
 })
 

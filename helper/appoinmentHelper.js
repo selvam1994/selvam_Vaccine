@@ -2,11 +2,41 @@ const { create } = require('../models/appoinment_model')
 const AppoinmentModel = require('../models/appoinment_model')
 const BeneficiaryModel = require('../models/beneficiary_model')
 
-
+module.exports.resheduleAppoinments= async function(beneficiary, input){
+    console.log("Inside Resheduling block")
+    availableSlot=['9.30 am to 11.30am','2pm to 4pm','6pm to 8pm']
+    console.log(beneficiary)
+    var apptSearch=await AppoinmentModel.find({_id:beneficiary.appoinmentId})
+    console.log(apptSearch)
+    if(apptSearch.length ==1){
+        if (beneficiary.doses==1){
+            beneficiary.doses==0
+            var result=await this.bookAppoinment(beneficiary,input)
+            console.log(result)
+            if (result.includes("Appoinment booked")){
+                const appoinmentHash = createHash(input)
+                var slotkey=  "'branchValue.appDateValue.slots."+availableSlot.indexOf(beneficiary.appoinmentSlot)+"':1";
+                var updateAppt=await AppoinmentModel.findOneAndUpdate({_id:beneficiary.appoinmentId},{ $inc: {"branchValue.appDateValue.firstDose" : 1 
+            }})
+                return result
+            }else{
+                return `unable to reschedule appoinment ${result}`
+            }
+        }else if (beneficiary.doses==2){
+            beneficiary.doses==1
+            // bookAppoinment(beneficiary,input)
+        }else{
+            return "something not correct in beneficiary details"
+        }
+    }else{
+        return "appoinment not found pls provide a valid appoinment date"
+    }
+}
 
 module.exports.bookAppoinment= async function (beneficiary, input){
-    console.log("inside buddy")
+    console.log("inside bookAppoinment")
     availableSlot=['9.30 am to 11.30am','2pm to 4pm','6pm to 8pm']
+
     if (availableSlot.indexOf(input.slot)>=0){
         input['slotMap']=availableSlot.indexOf(input.slot);
     }else{
@@ -31,30 +61,42 @@ module.exports.bookAppoinment= async function (beneficiary, input){
         }else{
             return `Slot ${availableSlot[input.slotMap]} is completely booked , pls try for a different slot`
         }
-        if (beneficiary.doses==0){
+        console.log(dateDiff(input.date,null))
+        if (beneficiary.doses==0 ){
             if(firstDose >0){
-                firstDose-=1
-                beneficiary.doses=1
+                if (dateDiff(input.date,null) <= 90 && dateDiff(input.date,null) > 0){
+                    firstDose-=1
+                    beneficiary.doses=1
+                }else{
+                    return "pls enter a valid appoinkment date for firts dose 90 days from today "
+                }
             }else{
                 return `Dear ${beneficiary.name} First Dose is not available for the date:${input.date} selected slot: ${input.slot}`
             }
-        }else if (beneficiary.doses==1){
+        }else if (beneficiary.doses==1 ){
             if(secondDose >0){
-                secondDose-=1
-                beneficiary.doses=2
+                if (dateDiff(input.date,beneficiary.appoinmentDate)  > 15){
+                    secondDose-=1
+                    beneficiary.doses=2
+                }else{
+                    return "pls enter a valid appoinkment date for second dose 15 days after first dose "
+                }
             }else{
                 return `Dear ${beneficiary.name} Second Dose is not available for the date:${input.date} selected slot: ${input.slot}`
             }
         }else{
-            return "Beneficiary has been vaccinated with both the doses"
+            return "Beneficiary has been vaccinated with both the doses  or difference between vaccination doses is 90/15"
         }
         input['firstDose']=firstDose
         input['secondDose']=secondDose
         const appoinmentHash = createHash(input)
         var updateAppt=await AppoinmentModel.findByIdAndUpdate({_id:apptEntry._id},appoinmentHash)
-
+        beneficiary.appoinmentSlot = input.slot
+        beneficiary.appoinmentDate = input.date
+        beneficiary.appoinmentCenter = input.vaccineCenter
+        beneficiary.appoinmentId = updateAppt.id
         var updateBenef= await BeneficiaryModel.findByIdAndUpdate({_id:beneficiary._id},beneficiary)
-        return `Appoinment booked ${updateAppt}`
+        return `Appoinment booked ${updateAppt.id}`
     }else if(apptSearch.length == 0){
         console.log("Making new entry in DB")
 
@@ -64,14 +106,24 @@ module.exports.bookAppoinment= async function (beneficiary, input){
         input['slot0']=10;
         input['slot1']=10;
         input['slot2']=10;
-        if (beneficiary.doses==0){
+        console.log(beneficiary,dateDiff(input.date,null))
+        if (beneficiary.doses==0 ){
+            if (dateDiff(input.date,null) <= 90 && dateDiff(input.date,null) > 0){
                 firstDose-=1
                 beneficiary.doses=1
+            }else{
+                return "pls enter a valid appoinkment date for firts dose 90 days from today "
+            }
         }else if (beneficiary.doses==1){
+            if (dateDiff(input.date,beneficiary.appoinmentDate)  > 15){
                 secondDose-=1
                 beneficiary.doses=2
+            }else{
+                return "pls enter a valid appoinkment date for second dose 15 days after first dose "
+            }
+
         }else{
-            return "Beneficiary has been vaccinated with both the doses"
+            return "Beneficiary has been vaccinated with both the doses "
         }
         switch(input.slotMap){
             case 0:
@@ -94,8 +146,12 @@ module.exports.bookAppoinment= async function (beneficiary, input){
 
         const appoinmentHash = createHash(input)
         var appoinmet = await AppoinmentModel.create(appoinmentHash)
+        beneficiary.appoinmentSlot = input.slot
+        beneficiary.appoinmentDate = input.date
+        beneficiary.appoinmentCenter = input.vaccineCenter
+        beneficiary.appoinmentId = appoinmet.id
         var updateBenef= await BeneficiaryModel.findByIdAndUpdate({_id:beneficiary._id},beneficiary)
-        return `Appoinment bookoed ${appoinmet.id}`
+        return `Appoinment booked ${appoinmet.id}`
     }else{
         return "What were you thinking?  check the DB structure"
     }
@@ -124,4 +180,25 @@ module.exports.bookAppoinment= async function (beneficiary, input){
     branch["branchValue"]=appDate;
     branch["branchKey"]=branchkey;
     return branch
+}
+
+function dateDiff(value,key){
+    const datePattern = new RegExp('^[0-9]{2}\-[0-9]{2}\-[0-9]{4}');
+    var today;
+    console.log(value,key)
+    if (value.match(datePattern) !=null ) {
+        if (key == null){
+            today = new Date()
+        }else{
+            var dateKeyParts = key.split("-");
+            today = new Date(+dateKeyParts[2], dateKeyParts[1] - 1, +dateKeyParts[0]);
+        }
+        var dateParts = value.split("-");
+        const inputDate = new Date(+dateParts[2], dateParts[1] - 1, +dateParts[0]);
+        var timeDiff =  inputDate.getTime()-today.getTime();
+        return totallDateDiff = timeDiff / (1000 * 3600 * 24);
+    }else {
+        return "Date is not in proper format"
+    }
+     
 }
